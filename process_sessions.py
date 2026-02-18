@@ -25,11 +25,14 @@ from etl_functions import ensure_required_columns, load_dataframe_to_bigquery
 def define_schema_sessions():
     """Define schema for sessions_aggregated table
     
-    Core session columns with behavioral metrics
+    Core session columns with behavioral metrics and user metadata
     """
     return [
         bigquery.SchemaField("session_id", "STRING", mode="REQUIRED"),
         bigquery.SchemaField("distinct_id", "STRING"),
+        bigquery.SchemaField("city", "STRING"),
+        bigquery.SchemaField("country", "STRING"),
+        bigquery.SchemaField("created_event", "BOOLEAN"),
         bigquery.SchemaField("viewed_event", "BOOLEAN"),
         bigquery.SchemaField("joined_event", "BOOLEAN"),
         bigquery.SchemaField("invited_someone", "BOOLEAN"),
@@ -39,9 +42,20 @@ def define_schema_sessions():
         bigquery.SchemaField("scroll_event_count", "INTEGER"),
         bigquery.SchemaField("started_quiz", "BOOLEAN"),
         bigquery.SchemaField("completed_quiz", "BOOLEAN"),
-        bigquery.SchemaField("created_event", "BOOLEAN"),
-        # Session metadata from sessions_df will be auto-detected
-        # User metadata from users_df will be added later
+        bigquery.SchemaField("start_timestamp", "TIMESTAMP"),
+        bigquery.SchemaField("end_timestamp", "TIMESTAMP"),
+        bigquery.SchemaField("autocapture_count", "INTEGER"),
+        bigquery.SchemaField("screen_count", "INTEGER"),
+        bigquery.SchemaField("session_duration", "FLOAT"),
+        bigquery.SchemaField("user_id", "STRING"),
+        bigquery.SchemaField("fullName", "STRING"),
+        bigquery.SchemaField("phoneNumber", "STRING"),
+        bigquery.SchemaField("username", "STRING"),
+        bigquery.SchemaField("email", "STRING"),
+        bigquery.SchemaField("contactAccessGranted", "BOOLEAN"),
+        bigquery.SchemaField("businessUser", "BOOLEAN"),
+        bigquery.SchemaField("createdAt", "TIMESTAMP"),
+        bigquery.SchemaField("etl_loaded_at", "TIMESTAMP"),
     ]
 
 
@@ -115,6 +129,8 @@ def create_session_aggregated_df(events_extracted, sessions_df, users_df, fireba
         'screen_name': lambda x: list(x),  # Keep all screen names
         'touch_x': lambda x: x.notnull().sum(),  # Count touch events (scroll indicator)
         'touch_y': lambda x: x.notnull().sum(),  # Count touch events (scroll indicator)
+        'city': 'first',  # City from first event in session
+        'country': 'first',  # Country from first event in session
     }).reset_index()
     
     # Calculate behavioral flags
@@ -163,14 +179,41 @@ def create_session_aggregated_df(events_extracted, sessions_df, users_df, fireba
         on=['session_id', 'distinct_id'],
         how='left'
     )
+
+    users_df = users_df.sort_values(['fullName', 'phoneNumber',
+                                      'username', 'email']).drop_duplicates(subset=['fullName',
+                                                                                     'phoneNumber'], keep='first')
     
-    # Merge with users_df to get user metadata (phoneNumber -> user_id)
-    session_final = session_final.merge(
+    # Merge with users_df to get user metadata (first on phoneNumber)
+    merged_phone = session_final.merge(
         users_df,
         left_on='distinct_id',
         right_on='phoneNumber',
-        how='left'
+        how='left',
+        suffixes=('', '_user')
     )
+
+    # Find rows where user info was not found (i.e., user_id is NaN after phoneNumber merge)
+    unmatched = merged_phone[merged_phone['user_id'].isna()].copy()
+
+    if not unmatched.empty:
+        # Try to merge those on user_id
+        unmatched = unmatched.drop(users_df.columns, axis=1, errors='ignore')  # Remove user columns to avoid conflicts
+        merged_userid = unmatched.merge(
+            users_df,
+            left_on='distinct_id',
+            right_on='user_id',
+            how='left',
+            suffixes=('', '_user')
+        )
+        # # Keep only rows where user_id is now found
+        # matched_userid = merged_userid[~merged_userid['user_id'].isna()]
+        # Keep rows from the first merge where user_id was found
+        matched_phone = merged_phone[~merged_phone['user_id'].isna()]
+        # Combine both sets
+        session_final = pd.concat([matched_phone, merged_userid], ignore_index=True)
+    else:
+        session_final = merged_phone
     
     # Determine if user created an event during the session
     # Check if any events in firebase_events_df were created within the session time range
@@ -191,6 +234,18 @@ def create_session_aggregated_df(events_extracted, sessions_df, users_df, fireba
         return len(created_during_session) > 0
     
     session_final['created_event'] = session_final.apply(check_event_creation, axis=1)
+
+    session_final = session_final.dropna(subset=['user_id'])
+
+    columns_to_show = ['session_id', 'distinct_id', 'city', 'country', 'created_event', 'viewed_event', 'joined_event',
+       'invited_someone', 'enabled_contacts', 'scrolled', 'visited_discover',
+       'scroll_event_count', 'started_quiz', 'completed_quiz', 'start_timestamp', 'end_timestamp',
+       'autocapture_count', 'screen_count', 'session_duration',
+        'user_id', 'fullName', 'phoneNumber',
+       'username', 'email', 'contactAccessGranted',
+       'businessUser', 'createdAt', 'etl_loaded_at']
+
+    session_final = session_final[[col for col in columns_to_show if col in session_final.columns]]
     
     return session_final
 
@@ -219,7 +274,7 @@ def process_sessions_data(posthog_events_df, sessions_df, users_df, firebase_eve
     # Define excluded user IDs (test/internal users)
     bok_ids = ['+18323900558', '+18323875995', '+18323787163', '+11111111111']
     maaz_ids = []
-    taras_ids = []
+    taras_ids = ['+15126437937']
     zach_ids = ['+15126437937', '+15125577162']
     trask_ids = ['+12146865810']
     brandon_ids = ['+15126530534']
@@ -252,7 +307,7 @@ def process_sessions_data(posthog_events_df, sessions_df, users_df, firebase_eve
             dataset_id=dataset_id,
             table_id='sessions_aggregated',
             write_disposition='WRITE_TRUNCATE',  # Replace table each time
-            schema=None  # Auto-detect schema
+            schema=define_schema_sessions()  # Use defined schema
         )
     
     return len(session_aggregated)

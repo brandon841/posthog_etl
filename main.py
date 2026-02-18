@@ -97,12 +97,8 @@ def main():
         # Define all queries to run in parallel
         print("\nFetching all data from BigQuery in parallel...")
         
-        # Determine date range based on mode
-        if full_load:
-            date_filter = ""  # No date filter for full load
-        else:
-            # For incremental, get last 30 days (adjust as needed)
-            date_filter = "WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)"
+        # Date greater than 01-01-2026
+        date_filter = f"WHERE timestamp >= '2026-01-01'" if not full_load else ""
         
         queries = [
             ('posthog_events', f"""
@@ -112,7 +108,7 @@ def main():
             """),
             ('sessions', f"""
                 SELECT * FROM `{project_id}.{dataset_id}.sessions`
-                {f'LIMIT {args.limit}' if args.limit else ''}
+                 {f'LIMIT {args.limit}' if args.limit else ''}
             """),
             ('users', f"""
                 SELECT * FROM `{project_id}.{firebase_dataset_id}.users`
