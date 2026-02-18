@@ -1,0 +1,2 @@
+# Minimal ETL framework requirements
+pandas
