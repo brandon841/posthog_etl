@@ -58,3 +58,6 @@ venv.bak/
 
 # Docker
 *.log
+
+# Credentials - Firebase and BigQuery service account keys
+*.json
