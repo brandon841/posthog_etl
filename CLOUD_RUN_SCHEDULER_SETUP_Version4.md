@@ -264,16 +264,7 @@ This section is intentionally explicit — follow each numbered step.
      ```
    - This identity is used by the container when calling Google APIs.
 
-6) **Variables & Secrets (map secret to env var)**
-   - Scroll to **Variables & Secrets** → **Reference a secret**.
-   - Select secret: `bigquery-key`
-   - In **Env var name** enter: `BIGQUERY_SECRET_NAME`
-   - Choose version: `latest` (or pin a version).
-   - Save the secret mapping.
-
-   **Why:** The `app.py` fetches this secret from Secret Manager and writes it to a temp file, then sets `BIGQUERY_CREDENTIALS_PATH` for the BigQuery client.
-
-7) **Environment Variables** (add these in Environment Variables section):
+6) **Environment Variables** (add these in Environment Variables section):
    ```
    GOOGLE_CLOUD_PROJECT_ID = your-project-id
    POSTHOG_DATASET_ID = posthog_etl
@@ -284,14 +275,17 @@ This section is intentionally explicit — follow each numbered step.
    
    **Do NOT set `GOOGLE_APPLICATION_CREDENTIALS`** — Cloud Run uses the service account identity automatically.
 
-8) **Container sizing & runtime**
-   - Memory: start with `1Gi` (increase if OOM).
-   - Max Concurrent Requests: set to `1` (recommended).
+7) **Container sizing & runtime**
+   - Memory: start with `2Gi` for parallel BigQuery queries (increase to `4Gi` or `8Gi` if OOM).
+   - Max Concurrent Requests: keep at `1` (only one scheduled ETL run should execute at a time).
    - Timeout: set sufficiently large (max 60m on Cloud Run). If ETL > 60m, consider Cloud Run Jobs.
-   - CPU: default (1 vCPU) is fine for most tests.
+   - CPU: `2` or `4` vCPUs recommended for parallel BigQuery operations.
+   - Max instances: set to `1` to prevent overlapping ETL runs.
 
-9) **Create / Deploy**
-   - Click **Create** (or **Deploy**). Wait for deployment to finish.
+   **Note:** The "Max Concurrent Requests = 1" setting is for HTTP requests, NOT internal parallelization. Your ETL code can still run parallel BigQuery queries within a single request. This setting prevents multiple scheduler jobs from running simultaneously.
+
+8) **Create / Deploy**
+9) **If you see errors** **Deploy**. Wait for deployment to finish.
    - Copy the service URL (e.g., `https://posthog-etl-xxxxx-uc.a.run.app`).
 
 10) **If you see errors**
@@ -303,11 +297,23 @@ This section is intentionally explicit — follow each numbered step.
 ### F — Verify scheduler service account + grant Run Invoker to new service
 **Note:** You likely already have `scheduler-invoker` SA from the previous ETL. You just need to grant it access to this new Cloud Run service.
 
-1. Cloud Run → Select `posthog-etl` service → **Permissions** tab → **Grant Access**
-2. Add member:
-   - **New principals**: `scheduler-invoker@PROJECT_ID.iam.gserviceaccount.com`
-   - **Role**: **Cloud Run Invoker** (`roles/run.invoker`)
-3. Click **Save**
+**From IAM & Admin (project-level access):**
+1. Navigate to **IAM & Admin** → **IAM**
+2. Click **GRANT ACCESS** button
+3. In **New principals**: enter `scheduler-invoker@PROJECT_ID.iam.gserviceaccount.com`
+4. In **Select a role**: search for and select **Cloud Run Invoker** (`roles/run.invoker`)
+5. Click **Save**
+
+**Note:** This grants invoker access to ALL Cloud Run services in the project, which is fine for your use case.
+
+**Option 3 - Using gcloud (if UI doesn't show the option):**
+```bash
+gcloud run services add-iam-policy-binding posthog-etl \
+  --region=us-central1 \
+  --member="serviceAccount:scheduler-invoker@PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
+```
+Replace `PROJECT_ID` with your actual project ID and adjust region if needed.
 
 ---
 
