@@ -244,9 +244,12 @@ def create_session_aggregated_df(events_extracted, sessions_df, users_df, fireba
        'autocapture_count', 'screen_count', 'session_duration',
         'user_id', 'fullName', 'phoneNumber',
        'username', 'email', 'contactAccessGranted',
-       'businessUser', 'createdAt', 'etl_loaded_at']
+       'businessUser', 'createdAt']
 
     session_final = session_final[[col for col in columns_to_show if col in session_final.columns]]
+
+    #Adding etl_loaded_at timestamp
+    session_final['etl_loaded_at'] = datetime.now(timezone.utc)
     
     return session_final
 
