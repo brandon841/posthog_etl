@@ -19,4 +19,3 @@ steps:
 
 images:
   - 'gcr.io/$PROJECT_ID/posthog-etl:$SHORT_SHA'
-  - 'gcr.io/$PROJECT_ID/posthog-etl:latest'
