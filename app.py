@@ -108,3 +108,8 @@ def run_handler():
 @app.route("/", methods=["POST", "GET"])
 def index():
     return "ETL service. POST /run to execute.", 200
+
+if __name__ == "__main__":
+    # Cloud Run expects the app to listen on PORT env var (default 8080)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
