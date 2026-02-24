@@ -71,8 +71,9 @@ def main():
 
     # Configuration
     project_id = os.getenv('GOOGLE_CLOUD_PROJECT_ID')
-    dataset_id = os.getenv('DATASET_ID', 'posthog_etl')
+    posthog_dataset_id = os.getenv('POSTHOG_DATASET_ID', 'posthog_etl')
     firebase_dataset_id = os.getenv('FIREBASE_DATASET_ID', 'firebase_etl_prod')
+    posthog_aggregated_id = os.getenv('POSTHOG_AGGREGATED_DATASET_ID')
 
     if not project_id:
         print("ERROR: Missing required environment variables:")
@@ -85,14 +86,14 @@ def main():
         bq_client = init_bigquery_client()
         
         # Create dataset if needed
-        create_bigquery_dataset(bq_client, dataset_id)
+        create_bigquery_dataset(bq_client, posthog_aggregated_id)
 
         # Determine ETL mode
         full_load = args.full_load
         if full_load:
             print("Running FULL LOAD (all tables)")
         else:
-            print("Running INCREMENTAL LOAD (each table uses its own last timestamp)")
+            print("Running INCREMENTAL LOAD")
 
         # Define all queries to run in parallel
         print("\nFetching all data from BigQuery in parallel...")
@@ -102,12 +103,12 @@ def main():
         
         queries = [
             ('posthog_events', f"""
-                SELECT * FROM `{project_id}.{dataset_id}.events` 
+                SELECT * FROM `{project_id}.{posthog_dataset_id}.events` 
                 {date_filter}
                 {f'LIMIT {args.limit}' if args.limit else ''}
             """),
             ('sessions', f"""
-                SELECT * FROM `{project_id}.{dataset_id}.sessions`
+                SELECT * FROM `{project_id}.{posthog_dataset_id}.sessions`
                  {f'LIMIT {args.limit}' if args.limit else ''}
             """),
             ('users', f"""
@@ -139,7 +140,7 @@ def main():
             data['firebase_events'],
             bq_client=bq_client,
             project_id=project_id,
-            dataset_id=dataset_id
+            dataset_id=posthog_aggregated_id
         )
 
         # Add more process steps as needed
@@ -148,7 +149,7 @@ def main():
         # Summary
         print(f"\nETL Complete!")
         print(f"   Project: {project_id}")
-        print(f"   Dataset: {dataset_id}")
+        print(f"   Dataset: {posthog_aggregated_id}")
         print(f"   Mode: {'FULL' if full_load else 'INCREMENTAL (per-table)'}")
         for table, count in results.items():
             print(f"   {table}: {count:,} records processed")

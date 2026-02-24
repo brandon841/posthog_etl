@@ -151,6 +151,7 @@ def create_session_aggregated_df(events_extracted, sessions_df, users_df, fireba
     )
 
     # Scrolling logic: If there are any touch events (touch_x or touch_y), we can infer that the user scrolled during the session
+    #TO DO can we caclculate scroll duration or depth of scroll?
     session_agg['scrolled'] = (session_agg['touch_x'] > 0) | (session_agg['touch_y'] > 0)
     
     session_agg['visited_discover'] = session_agg['screen_name'].apply(

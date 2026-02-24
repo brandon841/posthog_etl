@@ -11,6 +11,6 @@ This is a stripped-down ETL (Extract-Transform-Load) pipeline framework. It prov
 - `requirements.txt`, `Dockerfile`, `cloudbuild.yaml`: For deployment & builds.
 - `Testing/`: Placeholder for your test code and test data.
 
-## Getting Started
-
-1. Install dependencies:
+## TO DO 
+* Update date_filter in main.py for incremental loading
+* See if we can calculate scroll depth using touch_x and touch_y from posthog events
