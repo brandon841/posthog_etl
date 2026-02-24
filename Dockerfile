@@ -2,17 +2,25 @@
 # Builds containerized ETL with Flask HTTP wrapper for Cloud Run
 FROM python:3.11-slim
 
+# Ensure Python output is sent straight to terminal without buffering
+ENV PYTHONUNBUFFERED=1 \
+    PORT=8080
+
 WORKDIR /app
 
-# Install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
+# Copy project files (including requirements.txt)
 COPY . .
 
-# Expose port for Cloud Run (Flask default)
-EXPOSE 8080
+# Install system deps required by some Python packages (e.g., pyarrow),
+# install all Python dependencies from requirements.txt, then remove build tools.
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential gcc \
+    && pip install --upgrade pip \
+    && pip install -r requirements.txt \
+    && apt-get remove -y build-essential gcc \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
-# Run Flask app (app.py handles /run endpoint and calls main.py)
-CMD ["python", "app.py"]
+EXPOSE ${PORT}
+
+# Start the Flask app with gunicorn (app.py provides /run endpoint)
+CMD ["gunicorn", "-b", "0.0.0.0:8080", "app:app", "--workers", "1", "--threads", "4"]
