@@ -28,6 +28,7 @@ load_dotenv()
 try:
     from etl_functions import query_bq_parallel, create_bigquery_dataset
     from process_sessions import process_sessions_data
+    from process_people import process_people_data
 except ImportError as e:
     print(f"ERROR: Required modules not installed: {e}")
     print("Install with: pip install pandas python-dotenv google-cloud-bigquery")
@@ -133,7 +134,7 @@ def main():
         results = {}
 
         # Sessions Data Processing
-        results['sessions'] = process_sessions_data(
+        session_df = process_sessions_data(
             data['posthog_events'],
             data['sessions'],
             data['users'],
@@ -142,9 +143,15 @@ def main():
             project_id=project_id,
             dataset_id=posthog_aggregated_id
         )
+        results['sessions'] = len(session_df)
 
         # Add more process steps as needed
-        # process_template.run_example_process()
+        results['people'] = process_people_data(
+            session_df,  # Use processed sessions DataFrame for people processing
+            bq_client=bq_client,
+            project_id=project_id,
+            dataset_id=posthog_aggregated_id
+        )
 
         # Summary
         print(f"\nETL Complete!")

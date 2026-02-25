@@ -19,7 +19,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timezone
 from google.cloud import bigquery
-from etl_functions import ensure_required_columns, load_dataframe_to_bigquery
+from etl_functions import ensure_required_columns, load_dataframe_to_bigquery, get_excluded_users
 
 
 def define_schema_sessions():
@@ -269,20 +269,14 @@ def process_sessions_data(posthog_events_df, sessions_df, users_df, firebase_eve
         dataset_id: Optional BigQuery dataset ID for loading results
     
     Returns:
-        Number of session records processed
+        DataFrame with session records processed
     """
     print("\n" + "="*50)
     print("Processing Sessions Data")
     print("="*50)
     
     # Define excluded user IDs (test/internal users)
-    bok_ids = ['+18323900558', '+18323875995', '+18323787163', '+11111111111']
-    maaz_ids = []
-    taras_ids = ['+15126437937']
-    zach_ids = ['+15126437937', '+15125577162']
-    trask_ids = ['+12146865810']
-    brandon_ids = ['+15126530534']
-    exclude_ids = bok_ids + maaz_ids + taras_ids + zach_ids + trask_ids + brandon_ids
+    exclude_ids = get_excluded_users()
     
     # Create events_extracted dataframe
     print("Extracting event properties...")
@@ -314,4 +308,4 @@ def process_sessions_data(posthog_events_df, sessions_df, users_df, firebase_eve
             schema=define_schema_sessions()  # Use defined schema
         )
     
-    return len(session_aggregated)
+    return session_aggregated

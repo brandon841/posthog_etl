@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+#Ignore ipynb files 
+*.ipynb
+
 # Distribution / packaging
 .Python
 build/
