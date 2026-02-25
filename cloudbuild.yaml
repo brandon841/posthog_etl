@@ -34,7 +34,7 @@ steps:
             --max-instances=1 \
             --concurrency=1 \
             --timeout=3600 \
-            --set-env-vars=GOOGLE_CLOUD_PROJECT_ID=$PROJECT_ID,POSTHOG_DATASET_ID=posthog_etl,FIREBASE_DATASET_ID=firebase_etl_prod,POSTHOG_AGGREGATED_DATASET_ID=posthog_aggregated,BIGQUERY_SECRET_NAME=bigquery-key \
+            --set-env-vars=GOOGLE_CLOUD_PROJECT_ID=$PROJECT_ID,POSTHOG_DATASET_ID=posthog_etl,FIREBASE_DATASET_ID=firebase_etl_prod,POSTHOG_AGGREGATED_DATASET_ID=posthog_aggregated_prod,BIGQUERY_SECRET_NAME=bigquery-key \
             --no-allow-unauthenticated \
             --quiet
         else
