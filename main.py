@@ -180,10 +180,9 @@ def main():
         try:
             daily_activity_df = process_daily_activity(
                 data['posthog_events'],
-                data['sessions'],
-                data['users'],
                 data['firebase_events'],
                 data['userinvites'],
+                data['users'],
                 bq_client=bq_client,
                 project_id=project_id,
                 dataset_id=posthog_aggregated_id
