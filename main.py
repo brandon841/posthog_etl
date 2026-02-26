@@ -29,6 +29,8 @@ try:
     from etl_functions import query_bq_parallel, create_bigquery_dataset
     from process_sessions import process_sessions_data
     from process_people import process_people_data
+    from process_daily_activity import process_daily_activity
+    from process_churn import process_churn_table
 except ImportError as e:
     print(f"ERROR: Required modules not installed: {e}")
     print("Install with: pip install pandas python-dotenv google-cloud-bigquery")
@@ -119,6 +121,10 @@ def main():
             ('firebase_events', f"""
                 SELECT * FROM `{project_id}.{firebase_dataset_id}.events`
                 {f'LIMIT {args.limit}' if args.limit else ''}
+            """),
+            ('userinvites', f"""
+                SELECT * FROM `{project_id}.{firebase_dataset_id}.userinvites`
+                {f'LIMIT {args.limit}' if args.limit else ''}
             """)
         ]
         
@@ -128,30 +134,82 @@ def main():
         print(f"Loaded {len(data['posthog_events'])} posthog events, "
               f"{len(data['sessions'])} sessions, "
               f"{len(data['users'])} users, "
-              f"{len(data['firebase_events'])} firebase events")
+              f"{len(data['firebase_events'])} firebase events, "
+              f"{len(data['userinvites'])} user invites")
 
         # Process all data
         results = {}
+        session_df = None  # Initialize for people processing
+        daily_activity_df = None  # Initialize for churn processing
 
         # Sessions Data Processing
-        session_df = process_sessions_data(
-            data['posthog_events'],
-            data['sessions'],
-            data['users'],
-            data['firebase_events'],
-            bq_client=bq_client,
-            project_id=project_id,
-            dataset_id=posthog_aggregated_id
-        )
-        results['sessions'] = len(session_df)
+        try:
+            session_df = process_sessions_data(
+                data['posthog_events'],
+                data['sessions'],
+                data['users'],
+                data['firebase_events'],
+                bq_client=bq_client,
+                project_id=project_id,
+                dataset_id=posthog_aggregated_id
+            )
+            results['sessions'] = len(session_df)
+            print("✓ Sessions processing completed successfully")
+        except Exception as e:
+            print(f"✗ Sessions processing failed: {e}")
+            results['sessions'] = 'FAILED'
 
-        # Add more process steps as needed
-        results['people'] = process_people_data(
-            session_df,  # Use processed sessions DataFrame for people processing
-            bq_client=bq_client,
-            project_id=project_id,
-            dataset_id=posthog_aggregated_id
-        )
+        # People Data Processing
+        try:
+            if session_df is not None:
+                results['people'] = process_people_data(
+                    session_df,  # Use processed sessions DataFrame for people processing
+                    bq_client=bq_client,
+                    project_id=project_id,
+                    dataset_id=posthog_aggregated_id
+                )
+                print("✓ People processing completed successfully")
+            else:
+                print("⚠ Skipping people processing (sessions data not available)")
+                results['people'] = 'SKIPPED'
+        except Exception as e:
+            print(f"✗ People processing failed: {e}")
+            results['people'] = 'FAILED'
+
+        # Daily Activity Data Processing
+        try:
+            daily_activity_df = process_daily_activity(
+                data['posthog_events'],
+                data['firebase_events'],
+                data['userinvites'],
+                data['users'],
+                bq_client=bq_client,
+                project_id=project_id,
+                dataset_id=posthog_aggregated_id
+            )
+            results['daily_activity'] = len(daily_activity_df)
+            print("✓ Daily activity processing completed successfully")
+        except Exception as e:
+            print(f"✗ Daily activity processing failed: {e}")
+            results['daily_activity'] = 'FAILED'
+
+
+        try:
+            if daily_activity_df is not None:
+                churn_df = process_churn_table(
+                    daily_activity_df,
+                    bq_client=bq_client,
+                    project_id=project_id,
+                    dataset_id=posthog_aggregated_id
+                )
+                print("✓ Churn state processing completed successfully")
+                results['churn_state'] = len(churn_df)
+            else:
+                print("⚠ Skipping churn state processing (daily activity data not available)")
+                results['churn_state'] = 'SKIPPED'
+        except Exception as e:
+            print(f"✗ Churn state processing failed: {e}")
+            results['churn_state'] = 'FAILED'
 
         # Summary
         print(f"\nETL Complete!")
@@ -159,7 +217,10 @@ def main():
         print(f"   Dataset: {posthog_aggregated_id}")
         print(f"   Mode: {'FULL' if full_load else 'INCREMENTAL (per-table)'}")
         for table, count in results.items():
-            print(f"   {table}: {count:,} records processed")
+            if isinstance(count, int):
+                print(f"   {table}: {count:,} records processed")
+            else:
+                print(f"   {table}: {count}")
 
         return 0
 
