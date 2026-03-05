@@ -57,5 +57,18 @@ steps:
           echo "Skipping deployment - not on main or dev branch (current: $BRANCH_NAME)"
         fi
 
+  # Clear Streamlit cache in Cloud Storage (production only)
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - -c
+      - |
+        if [ "$BRANCH_NAME" = "main" ]; then
+          echo "Clearing Streamlit cache in Cloud Storage..."
+          gsutil -m rm -r gs://heyyall-dashboard-cache/cache/** || echo "No cache files to delete or bucket not found"
+        else
+          echo "Skipping cache clear - only runs on main branch"
+        fi
+
 images:
   - 'gcr.io/$PROJECT_ID/posthog-etl:$SHORT_SHA'
