@@ -31,7 +31,8 @@ def define_schema_churn_state():
         bigquery.SchemaField("last_biz_active_date", "DATE"),
         bigquery.SchemaField("total_events_created", "INTEGER"),
         bigquery.SchemaField("total_events_attended", "INTEGER"),
-        bigquery.SchemaField("total_app_interactions", "INTEGER")
+        bigquery.SchemaField("total_app_interactions", "INTEGER"),
+        bigquery.SchemaField("etl_loaded_at", "TIMESTAMP")
     ]
 
 def create_user_churn_state_table(master_df, inactivity_threshold_days=14, end_date=None):
@@ -145,6 +146,9 @@ def process_churn_table(daily_activity_df, bq_client=None, project_id=None, data
     churn_df = create_user_churn_state_table(daily_activity_df)
     
     print(f"\nProcessed {len(churn_df)} churn state records")
+
+    #adding etl_loaded_at timestamp for record-keeping
+    churn_df['etl_loaded_at'] = pd.Timestamp.now(tz=timezone.utc)
 
     # Ensure all schema columns exist with proper defaults
     churn_df = ensure_required_columns(

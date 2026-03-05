@@ -27,7 +27,8 @@ def define_schema_user_daily_activity():
         bigquery.SchemaField("phoneNumber", "STRING"),
         bigquery.SchemaField("fullName", "STRING"),
         bigquery.SchemaField("username", "STRING"),
-        bigquery.SchemaField("email", "STRING")
+        bigquery.SchemaField("email", "STRING"),
+        bigquery.SchemaField("etl_loaded_at", "TIMESTAMP")
     ]
 
 #function to create user specific date grid
@@ -312,6 +313,9 @@ def process_daily_activity(posthog_events_df, events_df, userinvites_df, users_d
     )
 
     print(f"\nProcessed {len(user_daily_activity_df)} user daily activity records")
+
+    #adding etl_loaded_at timestamp for record-keeping
+    user_daily_activity_df['etl_loaded_at'] = pd.Timestamp.now(tz=timezone.utc)
 
     # Ensure all schema columns exist with proper defaults
     user_daily_activity_df = ensure_required_columns(
