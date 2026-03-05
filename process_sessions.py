@@ -238,6 +238,9 @@ def create_session_aggregated_df(events_extracted, sessions_df, users_df, fireba
 
     session_final = session_final.dropna(subset=['user_id'])
 
+    #removing sessions with duration = 0 and autocapture count = 0 as these are likely sessions where the app was opened but not used
+    session_final = session_final[~((session_final['session_duration'] == 0) & (session_final['autocapture_count'] == 0))]
+
     columns_to_show = ['session_id', 'distinct_id', 'city', 'country', 'created_event', 'viewed_event', 'joined_event',
        'invited_someone', 'enabled_contacts', 'scrolled', 'visited_discover',
        'scroll_event_count', 'started_quiz', 'completed_quiz', 'start_timestamp', 'end_timestamp',
