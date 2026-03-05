@@ -44,6 +44,18 @@ except ImportError:
     print("Install with: pip install google-cloud-bigquery pyarrow")
     exit(1)
 
+from google.cloud import storage
+
+def clear_streamlit_cache(bucket_name="heyyall-dashboard-cache", cache_prefix="cache/"):
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    blobs = bucket.list_blobs(prefix=cache_prefix)
+    deleted = 0
+    for blob in blobs:
+        blob.delete()
+        deleted += 1
+    print(f"Deleted {deleted} cache files from gs://{bucket_name}/{cache_prefix}")
+
 def init_bigquery_client() -> bigquery.Client:
     """Initialize BigQuery client"""
     bq_credentials_path = os.getenv('BIGQUERY_CREDENTIALS_PATH')
@@ -210,6 +222,9 @@ def main():
         except Exception as e:
             print(f"✗ Churn state processing failed: {e}")
             results['churn_state'] = 'FAILED'
+
+        #clear streamlit cache after successful ETL
+        clear_streamlit_cache()
 
         # Summary
         print(f"\nETL Complete!")
