@@ -61,77 +61,104 @@ def create_user_churn_state_table(master_df, inactivity_threshold_days=14, end_d
     master_df['has_app_activity'] = master_df[app_activity_cols].sum(axis=1) > 0
     master_df['has_biz_activity'] = master_df[biz_activity_cols].sum(axis=1) > 0
     
-    # Group by user to calculate state metrics
-    user_states = []
+    # Calculate activity totals first (for later use)
+    activity_totals = master_df.groupby('user_id').agg({
+        'events_created_count': 'sum',
+        'accepted': 'sum',
+        'event_count': 'sum'
+    }).rename(columns={
+        'events_created_count': 'total_events_created',
+        'accepted': 'total_events_attended',
+        'event_count': 'total_app_interactions'
+    })
     
-    # Define activity types to loop through
+    # Process each activity type separately using vectorized operations
+    user_states_list = []
+    
+    # Define activity types to process
     activity_types = {
         'app': 'has_app_activity',
         'biz': 'has_biz_activity'
     }
     
-    for user_id, user_data in master_df.groupby('user_id'):
-        # Skip users with no activity at all
-        if not user_data['has_app_activity'].any() and not user_data['has_biz_activity'].any():
+    for activity_name, activity_flag in activity_types.items():
+        # Filter to only active days for this activity type
+        active_only = master_df[master_df[activity_flag]].copy()
+        
+        if len(active_only) == 0:
             continue
-        
-        user_state = {'user_id': user_id}
-        
-        # Loop through each activity type
-        for activity_name, activity_flag in activity_types.items():
-            active_days = user_data[user_data[activity_flag]].copy()
             
-            if len(active_days) > 0:
-                first_active_date = active_days['date'].min()
-                last_active_date = active_days['date'].max()
-                days_since_last_activity = (end_date - last_active_date).days
-                
-                # Determine churn state
-                if days_since_last_activity <= inactivity_threshold_days:
-                    churn_state = 'active'
-                    churn_date = None
-                else:
-                    churn_state = 'churned'
-                    churn_date = last_active_date + pd.Timedelta(days=inactivity_threshold_days)
-                
-                # Count churn cycles
-                active_sorted = active_days.sort_values('date')
-                active_sorted['days_since_prev'] = active_sorted['date'].diff().apply(lambda x: x.days if pd.notna(x) else None)
-                times_churned = (active_sorted['days_since_prev'] > inactivity_threshold_days).sum()
-                
-                # Check for reactivation
-                if times_churned > 0 and churn_state == 'active':
-                    churn_state = 'reactivated'
-                
-                # Store metrics for this activity type
-                user_state[f'{activity_name}_churn_state'] = churn_state
-                user_state[f'{activity_name}_churn_date'] = churn_date
-                user_state[f'{activity_name}_times_churned'] = times_churned
-                user_state[f'days_since_last_{activity_name}_activity'] = days_since_last_activity
-                user_state[f'first_{activity_name}_active_date'] = first_active_date
-                user_state[f'last_{activity_name}_active_date'] = last_active_date
-            else:
-                # No activity for this type
-                user_state[f'{activity_name}_churn_state'] = 'never_active'
-                user_state[f'{activity_name}_churn_date'] = None
-                user_state[f'{activity_name}_times_churned'] = 0
-                user_state[f'days_since_last_{activity_name}_activity'] = None
-                user_state[f'first_{activity_name}_active_date'] = None
-                user_state[f'last_{activity_name}_active_date'] = None
+        # Group by user and aggregate
+        user_agg = active_only.groupby('user_id')['date'].agg(['min', 'max', 'count']).reset_index()
+        user_agg.columns = ['user_id', 'first_active', 'last_active', 'active_day_count']
         
-        # Determine user segment based on primary activity
-        total_events_created = user_data['events_created_count'].sum()
-        total_events_attended = user_data['accepted'].sum()
-        total_app_interactions = user_data['event_count'].sum()
-
-        #adding totals to the user state for later use in segmentation and analysis
-        user_state['total_events_created'] = total_events_created
-        user_state['total_events_attended'] = total_events_attended
-        user_state['total_app_interactions'] = total_app_interactions
+        # Calculate days since last activity
+        user_agg['days_since_last'] = (end_date - user_agg['last_active']).apply(lambda x: x.days)
         
-        user_states.append(user_state)
+        # Determine churn state
+        user_agg['churn_state'] = np.where(
+            user_agg['days_since_last'] <= inactivity_threshold_days,
+            'active',
+            'churned'
+        )
+        
+        # Calculate churn date
+        user_agg['churn_date'] = np.where(
+            user_agg['churn_state'] == 'churned',
+            user_agg['last_active'] + pd.Timedelta(days=inactivity_threshold_days),
+            None
+        )
+        
+        # Count churn cycles - calculate gaps between consecutive active days per user
+        active_sorted = active_only.sort_values(['user_id', 'date']).copy()
+        active_sorted['days_since_prev'] = active_sorted.groupby('user_id')['date'].diff().apply(
+            lambda x: x.days if pd.notna(x) else 0
+        )
+        churn_counts = active_sorted[active_sorted['days_since_prev'] > inactivity_threshold_days].groupby('user_id').size()
+        churn_counts = churn_counts.reindex(user_agg['user_id'], fill_value=0)
+        user_agg['times_churned'] = churn_counts.values
+        
+        # Check for reactivation
+        user_agg.loc[(user_agg['times_churned'] > 0) & (user_agg['churn_state'] == 'active'), 'churn_state'] = 'reactivated'
+        
+        # Rename columns with activity prefix
+        user_agg = user_agg.rename(columns={
+            'churn_state': f'{activity_name}_churn_state',
+            'churn_date': f'{activity_name}_churn_date',
+            'times_churned': f'{activity_name}_times_churned',
+            'days_since_last': f'days_since_last_{activity_name}_activity',
+            'first_active': f'first_{activity_name}_active_date',
+            'last_active': f'last_{activity_name}_active_date'
+        }).drop('active_day_count', axis=1)
+        
+        user_states_list.append(user_agg)
     
-    return pd.DataFrame(user_states)
+    # Merge all activity types
+    if len(user_states_list) == 0:
+        return pd.DataFrame()
+    
+    user_states = user_states_list[0]
+    for df in user_states_list[1:]:
+        user_states = user_states.merge(df, on='user_id', how='outer')
+    
+    # Add activity totals
+    user_states = user_states.merge(activity_totals, on='user_id', how='left')
+    
+    # Fill missing activity type states with 'never_active'
+    for activity_name in activity_types.keys():
+        state_col = f'{activity_name}_churn_state'
+        if state_col not in user_states.columns:
+            user_states[state_col] = 'never_active'
+            user_states[f'{activity_name}_churn_date'] = None
+            user_states[f'{activity_name}_times_churned'] = 0
+            user_states[f'days_since_last_{activity_name}_activity'] = None
+            user_states[f'first_{activity_name}_active_date'] = None
+            user_states[f'last_{activity_name}_active_date'] = None
+        else:
+            user_states[state_col] = user_states[state_col].fillna('never_active')
+            user_states[f'{activity_name}_times_churned'] = user_states[f'{activity_name}_times_churned'].fillna(0)
+    
+    return user_states
 
 def process_churn_table(daily_activity_df, bq_client=None, project_id=None, dataset_id=None):
     """

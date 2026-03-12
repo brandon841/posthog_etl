@@ -30,7 +30,7 @@ steps:
             --region=us-central1 \
             --platform=managed \
             --service-account=etl-runner@$PROJECT_ID.iam.gserviceaccount.com \
-            --memory=2Gi \
+            --memory=4Gi \
             --cpu=2 \
             --max-instances=1 \
             --concurrency=1 \
@@ -45,7 +45,7 @@ steps:
             --region=us-central1 \
             --platform=managed \
             --service-account=etl-runner@$PROJECT_ID.iam.gserviceaccount.com \
-            --memory=2Gi \
+            --memory=4Gi \
             --cpu=2 \
             --max-instances=1 \
             --concurrency=1 \
