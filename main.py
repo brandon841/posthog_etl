@@ -167,6 +167,10 @@ def main():
             )
             results['sessions'] = len(session_df)
             print("✓ Sessions processing completed successfully")
+            
+            # Clear session-related raw data to free memory
+            del data['sessions']
+            
         except Exception as e:
             print(f"✗ Sessions processing failed: {e}")
             results['sessions'] = 'FAILED'
@@ -181,6 +185,10 @@ def main():
                     dataset_id=posthog_aggregated_id
                 )
                 print("✓ People processing completed successfully")
+                
+                # Clear session_df after people processing is done
+                del session_df
+                
             else:
                 print("⚠ Skipping people processing (sessions data not available)")
                 results['people'] = 'SKIPPED'
@@ -201,6 +209,13 @@ def main():
             )
             results['daily_activity'] = len(daily_activity_df)
             print("✓ Daily activity processing completed successfully")
+            
+            # Clear raw data that's no longer needed
+            del data['posthog_events']
+            del data['firebase_events']
+            del data['userinvites']
+            del data['users']
+            
         except Exception as e:
             print(f"✗ Daily activity processing failed: {e}")
             results['daily_activity'] = 'FAILED'
@@ -216,6 +231,11 @@ def main():
                 )
                 print("✓ Churn state processing completed successfully")
                 results['churn_state'] = len(churn_df)
+                
+                # Clear dataframes after churn processing
+                del daily_activity_df
+                del churn_df
+                
             else:
                 print("⚠ Skipping churn state processing (daily activity data not available)")
                 results['churn_state'] = 'SKIPPED'

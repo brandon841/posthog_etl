@@ -36,6 +36,7 @@ def create_user_specific_date_grid(master_df, end_date):
     """
     Create a user-date grid where each user has rows from their creation date 
     (or first activity if createdAt is missing) to the end date.
+    Memory-optimized version using vectorized operations.
     
     Parameters:
     - master_df: DataFrame with user_id, date, and createdAt columns
@@ -65,22 +66,26 @@ def create_user_specific_date_grid(master_df, end_date):
         user_start_dates['date']
     )
     
-    # Create date range for each user
-    all_user_dates = []
-    for _, row in user_start_dates.iterrows():
-        user_id = row['user_id']
-        start = row['start_date']
-        
-        # Generate date range for this user
-        dates = pd.date_range(start=start, end=end_date, freq='D').date
-        user_dates = pd.DataFrame({
-            'user_id': user_id,
-            'date': dates
-        })
-        all_user_dates.append(user_dates)
+    # Calculate days count for each user to pre-allocate efficiently
+    user_start_dates['days_count'] = (end_date - user_start_dates['start_date']).apply(lambda x: x.days + 1)
+    total_rows = user_start_dates['days_count'].sum()
     
-    # Concatenate all user date ranges
-    return pd.concat(all_user_dates, ignore_index=True)
+    # Pre-allocate arrays for better memory efficiency
+    user_ids = []
+    dates = []
+    
+    # Generate date ranges more efficiently
+    for _, row in user_start_dates.iterrows():
+        days = row['days_count']
+        user_ids.extend([row['user_id']] * days)
+        date_range = pd.date_range(start=row['start_date'], end=end_date, freq='D')
+        dates.extend(date_range.date)
+    
+    # Create DataFrame in one operation
+    return pd.DataFrame({
+        'user_id': user_ids,
+        'date': dates
+    })
 
 #Function to create user daily activity table
 def create_user_daily_activity_table(posthog_events_df, events_df, userinvites_df, users_df, end_date):
@@ -196,6 +201,9 @@ def create_user_daily_activity_table(posthog_events_df, events_df, userinvites_d
         activity_dfs
     )
     
+    # Clear intermediate dataframes to save memory
+    del posthog_activity, grouped_events, invites_pivoted, activity_dfs
+    
     # Filter out excluded users (now that all data is merged)
     # First, need to get phoneNumber mapping for user_ids to filter properly
     user_phone_mapping = user_lookup[['user_id', 'phoneNumber']].dropna(subset=['phoneNumber'])
@@ -271,7 +279,11 @@ def create_user_daily_activity_table(posthog_events_df, events_df, userinvites_d
     user_date_grid = create_user_specific_date_grid(master_df, end_date)
     
     # Merge grid with activity data
-    master_df = user_date_grid.merge(master_df, on=['user_id', 'date'], how='left')
+    master_with_grid = user_date_grid.merge(master_df, on=['user_id', 'date'], how='left')
+    
+    # Clear the grid and old master_df to save memory
+    del user_date_grid, master_df
+    master_df = master_with_grid
     
     # Fill NaN activity counts with 0 again after grid merge
     master_df[activity_cols] = master_df[activity_cols].fillna(0)
