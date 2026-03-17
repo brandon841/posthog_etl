@@ -134,6 +134,10 @@ def create_session_aggregated_df(events_extracted, sessions_df, users_df, fireba
     }).reset_index()
     
     # Calculate behavioral flags
+    session_agg['clicked_invite'] = session_agg['event_name'].apply(
+            lambda events: any(str(e) == 'click_invite_to_event' for e in events)
+        )
+
     session_agg['viewed_event'] = session_agg['event_name'].apply(
         lambda events: any(str(e) == 'view_event' for e in events)
     )
