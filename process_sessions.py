@@ -37,6 +37,7 @@ def define_schema_sessions():
         bigquery.SchemaField("joined_event", "BOOLEAN"),
         bigquery.SchemaField("invited_someone", "BOOLEAN"),
         bigquery.SchemaField("enabled_contacts", "BOOLEAN"),
+        bigquery.SchemaField("clicked_invite", "BOOLEAN"),
         bigquery.SchemaField("scrolled", "BOOLEAN"),
         bigquery.SchemaField("visited_discover", "BOOLEAN"),
         bigquery.SchemaField("scroll_event_count", "INTEGER"),
@@ -134,6 +135,10 @@ def create_session_aggregated_df(events_extracted, sessions_df, users_df, fireba
     }).reset_index()
     
     # Calculate behavioral flags
+    session_agg['clicked_invite'] = session_agg['event_name'].apply(
+            lambda events: any(str(e) == 'click_invite_to_event' for e in events)
+        )
+
     session_agg['viewed_event'] = session_agg['event_name'].apply(
         lambda events: any(str(e) == 'view_event' for e in events)
     )
@@ -242,7 +247,7 @@ def create_session_aggregated_df(events_extracted, sessions_df, users_df, fireba
     session_final = session_final[~((session_final['session_duration'] == 0) & (session_final['autocapture_count'] == 0))]
 
     columns_to_show = ['session_id', 'distinct_id', 'city', 'country', 'created_event', 'viewed_event', 'joined_event',
-       'invited_someone', 'enabled_contacts', 'scrolled', 'visited_discover',
+       'invited_someone', 'enabled_contacts', 'clicked_invite', 'scrolled', 'visited_discover',
        'scroll_event_count', 'started_quiz', 'completed_quiz', 'start_timestamp', 'end_timestamp',
        'autocapture_count', 'screen_count', 'session_duration',
         'user_id', 'fullName', 'phoneNumber',
