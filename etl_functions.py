@@ -51,7 +51,7 @@ def query_bq_parallel(bq_client, queries):
 def get_excluded_users() -> List[str]:
     """Return a list of user IDs to exclude from processing (e.g., test accounts)"""
     # Define excluded user IDs (test/internal users)
-    bok_ids = ['+18323900558', '+18323875995', '+18323787163', '+11111111111']
+    bok_ids = ['+18323900558', '+18323875995', '+18323787163', '+11111111111', '+18329986257']
     maaz_ids = []
     taras_ids = ['+15126437937']
     zach_ids = ['+15126437937', '+15125577162']
